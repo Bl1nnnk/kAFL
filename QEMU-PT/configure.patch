@@ -22,11 +22,11 @@
 4791c4794
 <   CFLAGS="-O2 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2 $CFLAGS"
 ---
->   CFLAGS="-Ofast -march=native -mtune=haswell -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2 $CFLAGS"
+>   CFLAGS="-Ofast -march=native -std=gnu99 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2 $CFLAGS"
 4793c4796
 <   CFLAGS="-O2 $CFLAGS"
 ---
->   CFLAGS="-Ofast -march=native -mtune=haswell  $CFLAGS"
+>   CFLAGS="-Ofast -march=native -std=gnu99  $CFLAGS"
 5361a5365,5367
 > fi
 > if test "$pt" = "yes" ; then

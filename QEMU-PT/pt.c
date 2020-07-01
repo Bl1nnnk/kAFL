@@ -98,24 +98,24 @@ static inline uint64_t mix_bits(uint64_t v) {
 }
 
 static void pt_bitmap(uint64_t addr){
+	uint64_t mix_val;
 	uint32_t transition_value = 0;
 	#ifdef SAMPLE_DECODED
 	sample_decoded(addr);
 	#endif
-	if(bitmap){		
+	if (bitmap) {		
 		/* vertex filter */
 		hypercall_submit_address(addr);
-		if(!hypercall_check_tuple(addr, last_ip)){
+		if (!hypercall_check_tuple(addr, last_ip)) {
 			/* edge filter */
-			addr = mix_bits(addr);
-			transition_value = (addr ^ (last_ip >> 1)) & 0xffffff;
+			mix_val = mix_bits(addr);
+			transition_value = (mix_val ^ (last_ip >> 1)) & 0xffffff;
 			hypercall_submit_transition(transition_value);
-			if(!hypercall_check_transition(transition_value)){
+			if (!hypercall_check_transition(transition_value)) {
 				/* apply transition to kAFL bitmap */
 				bitmap[transition_value & (kafl_bitmap_size-1)]++;
 			}
-		}
-		else{
+		} else {
 			return;
 		}
 	}
@@ -181,7 +181,6 @@ int pt_set_cr3(CPUState *cpu, uint64_t val, bool hmp_mode){
 
 int pt_enable_ip_filtering(CPUState *cpu, uint8_t addrn, uint64_t ip_a, uint64_t ip_b, bool hmp_mode){
 	int r = 0;
-	uint8_t* buf;
 
 	if(addrn > 3){
 		return -1;
@@ -200,19 +199,6 @@ int pt_enable_ip_filtering(CPUState *cpu, uint8_t addrn, uint64_t ip_a, uint64_t
 		pt_disable_ip_filtering(cpu, addrn, hmp_mode);
 	}
 
-	buf = malloc(ip_b-ip_a);
-	if(!read_virtual_memory(ip_a, buf, ip_b-ip_a, cpu)){
-		printf("FAIL 2\n");
-		free(buf);
-		return -EINVAL;
-	}
-
-#ifdef CREATE_VM_IMAGE
-	FILE* pt_file = fopen(DECODER_MEMORY_IMAGE, "wb");
-	fwrite(buf, sizeof(uint8_t), ip_b-ip_a, pt_file);
-	fclose(pt_file);
-#endif
-
 
 	printf("--> %d %lx %lx\n", addrn, ip_a, ip_b);
 	
@@ -226,7 +212,7 @@ int pt_enable_ip_filtering(CPUState *cpu, uint8_t addrn, uint64_t ip_a, uint64_t
 			r += pt_cmd(cpu, KVM_VMX_PT_CONFIGURE_ADDR0+addrn, hmp_mode);
 			r += pt_cmd(cpu, KVM_VMX_PT_ENABLE_ADDR0+addrn, hmp_mode);
 			cpu->pt_ip_filter_enabled[addrn] = true;
-			cpu->pt_decoder_state[addrn] = pt_decoder_init(buf, ip_a, ip_b, &pt_bitmap);
+			cpu->pt_decoder_state[addrn] = pt_decoder_init(cpu, ip_a, ip_b, &pt_bitmap);
 			break;
 		default:
 			r = -EINVAL;
@@ -349,6 +335,6 @@ void pt_post_kvm_run(CPUState *cpu){
 		if (overflow > 0){
 			cpu->overflow_counter++;
 			pt_dump(cpu, overflow);
-		}    
+		}
 	}
 }

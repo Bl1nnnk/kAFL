@@ -161,7 +161,7 @@ class MasterProcess:
 
         if map_state.last_hash_time:
             self.kafl_state.last_hash_time = map_state.last_hash_time
-        send_msg(KAFL_TAG_OUTPUT, self.kafl_state, self.comm.to_update_queue)     
+        send_msg(KAFL_TAG_OUTPUT, self.kafl_state, self.comm.to_update_queue)
 
     def __master_handler(self):
         if (time.time() - self.start) >= self.refresh_rate and not self.mapserver_status_pending:
@@ -327,7 +327,7 @@ class MasterProcess:
         self.kafl_state.payload = self.payload
 
         limiter_map = []
-        for i in range(len(self.payload)):
+        for i in xrange(len(self.payload)):
             limiter_map.append(True)
         if self.config.argument_values['i']:
             for ignores in self.config.argument_values['i']:
@@ -410,7 +410,7 @@ class MasterProcess:
                     log_master("Effector arihmetic size is " + str(arithmetic_range(self.payload, skip_null=self.skip_zero, effector_map=effector_map)))
                     log_master("Effector intersting size is " + str(interesting_range(self.payload, skip_null=self.skip_zero, effector_map=effector_map)))
                     new_effector_map = []
-                    for i in range(len(effector_map)):
+                    for i in xrange(len(effector_map)):
                         if effector_map[i] and limiter_map[i]:
                             new_effector_map.append(True)
                         else:
@@ -422,7 +422,7 @@ class MasterProcess:
                     self.kafl_state.progress_arithmetic_amount = arithmetic_range(self.payload, skip_null=self.skip_zero, effector_map=effector_map)
                     self.kafl_state.progress_interesting_amount = interesting_range(self.payload, skip_null=self.skip_zero, effector_map=effector_map)
                     send_msg(KAFL_TAG_OUTPUT, self.kafl_state, self.comm.to_update_queue)
-                    
+
                 self.comm.effector_mode.value = False
                 log_master("Arithmetic...")
                 mutate_seq_8_bit_arithmetic_array(payload_array,      self.__arithmetic_handler, skip_null=self.skip_zero, kafl_state=self.kafl_state, effector_map=effector_map, set_arith_max=self.arith_max)
@@ -483,7 +483,7 @@ class MasterProcess:
     	filter_bitmap_fd = os.open("/dev/shm/kafl_filter0", os.O_RDWR | os.O_SYNC | os.O_CREAT)
         os.ftruncate(filter_bitmap_fd, self.config.config_values['BITMAP_SHM_SIZE'])
         filter_bitmap = mmap.mmap(filter_bitmap_fd, self.config.config_values['BITMAP_SHM_SIZE'], mmap.MAP_SHARED, mmap.PROT_WRITE | mmap.PROT_READ)
-        for i in range(self.config.config_values['BITMAP_SHM_SIZE']):
+        for i in xrange(self.config.config_values['BITMAP_SHM_SIZE']):
         	filter_bitmap[i] = '\x00'
         filter_bitmap.close()
         os.close(filter_bitmap_fd)
@@ -491,7 +491,7 @@ class MasterProcess:
         filter_bitmap_fd = os.open("/dev/shm/kafl_tfilter", os.O_RDWR | os.O_SYNC | os.O_CREAT)
         os.ftruncate(filter_bitmap_fd, 0x1000000)
         filter_bitmap = mmap.mmap(filter_bitmap_fd, 0x1000000, mmap.MAP_SHARED, mmap.PROT_WRITE | mmap.PROT_READ)
-        for i in range(0x1000000):
+        for i in xrange(0x1000000):
         	filter_bitmap[i] = '\x00'
         filter_bitmap.close()
         os.close(filter_bitmap_fd)

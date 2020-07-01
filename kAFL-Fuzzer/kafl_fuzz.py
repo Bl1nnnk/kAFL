@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env pypy
 
 """
 Copyright (C) 2017 Sergej Schumilo

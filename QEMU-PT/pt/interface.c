@@ -193,6 +193,7 @@ static void pci_kafl_guest_realize(PCIDevice *dev, Error **errp){
 	if(s->bitmap_size <= 0){
 		s->bitmap_size = DEFAULT_KAFL_BITMAP_SIZE;
 	}
+	printf("BITMAP SZIE: %ld\n", s->bitmap_size);
 	kafl_bitmap_size = (uint32_t)s->bitmap_size;
 	
 	if (s->data_bar_fd_0 != NULL)

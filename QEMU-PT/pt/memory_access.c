@@ -21,16 +21,12 @@ along with QEMU-PT.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "memory_access.h"
 
-#define x86_64_PAGE_SIZE    	0x1000
-#define x86_64_PAGE_MASK   		~(x86_64_PAGE_SIZE - 1)
-
 bool read_virtual_memory(uint64_t address, uint8_t* data, uint32_t size, CPUState *cpu){
 	uint8_t tmp_buf[x86_64_PAGE_SIZE];
 	MemTxAttrs attrs;
 	hwaddr phys_addr;
 	int asidx;
 	uint64_t counter, l;
-	int i = 0;
 	
 	counter = size;
 	
@@ -38,22 +34,28 @@ bool read_virtual_memory(uint64_t address, uint8_t* data, uint32_t size, CPUStat
 	kvm_cpu_synchronize_state(cpu);
 
 	/* copy per page */
-	while(counter != 0){
-		
-		l = x86_64_PAGE_SIZE;
-		if (l > counter)
-		    l = counter;
+	while(counter > 0){
 		
 		asidx = cpu_asidx_from_attrs(cpu, MEMTXATTRS_UNSPECIFIED);
 		attrs = MEMTXATTRS_UNSPECIFIED;
 		phys_addr = cpu_get_phys_page_attrs_debug(cpu, (address & x86_64_PAGE_MASK), &attrs);
 		
+		if (phys_addr == -1){
+			printf("FAIL 1 (%lx)!\n", address);
+			return false;
+		}
+
+		l = x86_64_PAGE_SIZE - (address & x86_64_PAGE_OFF_MASK);
+		if (l > counter) {
+			l = counter;
+		}
+
 		phys_addr += (address & ~x86_64_PAGE_MASK);	
-		address_space_rw(cpu_get_address_space(cpu, asidx), phys_addr, MEMTXATTRS_UNSPECIFIED, tmp_buf, l, 0);
+		address_space_rw(cpu_get_address_space(cpu, asidx), phys_addr, MEMTXATTRS_UNSPECIFIED, tmp_buf, l, false);
 		
-		memcpy(data+(i*x86_64_PAGE_SIZE), tmp_buf, l);
+		memcpy(data, tmp_buf, l);
 		
-		i++;
+		data += l;
 		address += l;
 		counter -= l;
 	}
@@ -67,40 +69,62 @@ bool write_virtual_memory(uint64_t address, uint8_t* data, uint32_t size, CPUSta
 	/* Todo: later &address_space_memory + phys_addr -> mmap SHARED */
 	int asidx;
 	MemTxAttrs attrs;
-    hwaddr phys_addr;
-    MemTxResult res;
-
-    uint64_t counter, l, i;
-
-    counter = size;
-	while(counter != 0){
-		l = x86_64_PAGE_SIZE;
-        if (l > counter)
-            l = counter;
-
+	hwaddr phys_addr;
+	MemTxResult res;
+	
+	uint64_t counter, l;
+	
 	kvm_cpu_synchronize_state(cpu);
-        //cpu_synchronize_state(cpu);
-        asidx = cpu_asidx_from_attrs(cpu, MEMTXATTRS_UNSPECIFIED);
-        attrs = MEMTXATTRS_UNSPECIFIED;
-        phys_addr = cpu_get_phys_page_attrs_debug(cpu, (address & x86_64_PAGE_MASK), &attrs);
 
-        if (phys_addr == -1){
-            printf("FAIL 1 (%lx)!\n", address);
-            return false;
-        }
-        
-        phys_addr += (address & ~x86_64_PAGE_MASK);   
-        res = address_space_rw(cpu_get_address_space(cpu, asidx), phys_addr, MEMTXATTRS_UNSPECIFIED, data, l, true);
-        if (res != MEMTX_OK){
-            printf("FAIL 1 (%lx)!\n", address);
-            return false;
-        }   
+	counter = size;
+	while(counter > 0){
+		
+		asidx = cpu_asidx_from_attrs(cpu, MEMTXATTRS_UNSPECIFIED);
+		attrs = MEMTXATTRS_UNSPECIFIED;
+		phys_addr = cpu_get_phys_page_attrs_debug(cpu, (address & x86_64_PAGE_MASK), &attrs);
+		
+		if (phys_addr == -1){
+			printf("FAIL 1 (%lx)!\n", address);
+			return false;
+		}
 
-        i++;
-        data += l;
-        address += l;
-        counter -= l;
+		l = x86_64_PAGE_SIZE - (address & x86_64_PAGE_OFF_MASK);
+		if (l > counter) {
+			l = counter;
+		}
+
+		phys_addr += (address & ~x86_64_PAGE_MASK);	
+		res = address_space_rw(cpu_get_address_space(cpu, asidx), phys_addr, MEMTXATTRS_UNSPECIFIED, data, l, true);
+		if (res != MEMTX_OK){
+			printf("FAIL 1 (%lx)!\n", address);
+			return false;
+		}
+		
+		data += l;
+		address += l;
+		counter -= l;
 	}
 
 	return true;
+}
+
+/* Mmap guest virtual address to host address with size of 1 */
+void *mmap_virtual_memory(uint64_t address, CPUState *cpu)
+{
+	hwaddr phys_addr;
+	hwaddr len = 1;
+	//target_ulong host_addr;
+
+	phys_addr = cpu_get_phys_page_debug(cpu, (address & x86_64_PAGE_MASK));
+	if (phys_addr == -1){
+		printf("pu_get_phys_page_debug return -1 with address of %lx\n", address);
+		return NULL;
+	}
+
+	return cpu_physical_memory_map(phys_addr + (address & ~x86_64_PAGE_MASK), &len, false);
+}
+
+void munmap_virtual_memory(void *buffer, CPUState *cpu)
+{
+	cpu_physical_memory_unmap(buffer, 1, false, 1);
 }

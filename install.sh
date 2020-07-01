@@ -41,8 +41,10 @@ echo "[*] Installing python essentials ..."
 sudo -Eu root pip2.7 install mmh3 lz4 psutil > /dev/null 2> /dev/null
 
 echo
-echo "[*] Downloading QEMU $QEMU_VERSION ..."
-wget -O qemu.tar.gz $QEMU_URL 2> /dev/null
+if [ ! -f "qemu.tar.gz" ]; then
+  echo "[*] Downloading QEMU $QEMU_VERSION ..."
+  wget -O qemu.tar.gz $QEMU_URL 2> /dev/null
+fi
 
 echo "[*] Checking signature of QEMU $QEMU_VERSION ..."
 CHKSUM=`md5sum qemu.tar.gz| cut -d' ' -f1`
@@ -56,16 +58,16 @@ echo "[*] Unpacking QEMU $QEMU_VERSION ..."
 tar xf qemu.tar.gz
 
 echo "[*] Patching QEMU $QEMU_VERSION ..."
-patch qemu-$QEMU_VERSION/hmp-commands.hx < QEMU-PT/hmp-commands.hx.patch > /dev/null
-patch qemu-$QEMU_VERSION/monitor.c < QEMU-PT/monitor.c.patch > /dev/null
-patch qemu-$QEMU_VERSION/hmp.c < QEMU-PT/hmp.c.patch > /dev/null
-patch qemu-$QEMU_VERSION/hmp.h < QEMU-PT/hmp.h.patch > /dev/null
-patch qemu-$QEMU_VERSION/Makefile.target < QEMU-PT/Makefile.target.patch > /dev/null
-patch qemu-$QEMU_VERSION/kvm-all.c < QEMU-PT/kvm-all.c.patch > /dev/null
-patch qemu-$QEMU_VERSION/vl.c < QEMU-PT/vl.c.patch > /dev/null
-patch qemu-$QEMU_VERSION/configure < QEMU-PT/configure.patch > /dev/null
-patch qemu-$QEMU_VERSION/linux-headers/linux/kvm.h < QEMU-PT/linux-headers/linux/kvm.h.patch > /dev/null
-patch qemu-$QEMU_VERSION/include/qom/cpu.h < QEMU-PT/include/qom/cpu.h.patch > /dev/null
+patch qemu-$QEMU_VERSION/hmp-commands.hx < QEMU-PT/hmp-commands.hx.patch
+patch qemu-$QEMU_VERSION/monitor.c < QEMU-PT/monitor.c.patch
+patch qemu-$QEMU_VERSION/hmp.c < QEMU-PT/hmp.c.patch
+patch qemu-$QEMU_VERSION/hmp.h < QEMU-PT/hmp.h.patch
+patch qemu-$QEMU_VERSION/Makefile.target < QEMU-PT/Makefile.target.patch
+patch qemu-$QEMU_VERSION/kvm-all.c < QEMU-PT/kvm-all.c.patch
+patch qemu-$QEMU_VERSION/vl.c < QEMU-PT/vl.c.patch
+patch qemu-$QEMU_VERSION/configure < QEMU-PT/configure.patch
+patch qemu-$QEMU_VERSION/linux-headers/linux/kvm.h < QEMU-PT/linux-headers/linux/kvm.h.patch
+patch qemu-$QEMU_VERSION/include/qom/cpu.h < QEMU-PT/include/qom/cpu.h.patch
 
 mkdir qemu-$QEMU_VERSION/pt/ 2> /dev/null
 cp QEMU-PT/compile.sh qemu-$QEMU_VERSION/
@@ -104,8 +106,10 @@ echo "-------------------------------------------------"
 cd ..
 
 echo
-echo "[*] Downloading Kernel $LINUX_VERSION ..."
-wget -O kernel.tar.gz $LINUX_URL 2> /dev/null
+if [ ! -f "kernel.tar.gz" ]; then
+  echo "[*] Downloading Kernel $LINUX_VERSION ..."
+  wget -O kernel.tar.gz $LINUX_URL 2> /dev/null
+fi
 
 echo "[*] Checking signature of Kernel $LINUX_VERSION ..."
 CHKSUM=`md5sum kernel.tar.gz| cut -d' ' -f1`
@@ -121,14 +125,14 @@ echo "[*] Unpacking Kernel $LINUX_VERSION ..."
 tar xf kernel.tar.gz
 
 echo "[*] Patching Kernel $LINUX_VERSION ..."
-patch linux-$LINUX_VERSION/arch/x86/kvm/Makefile < KVM-PT/arch/x86/kvm/Makefile.patch > /dev/null
-patch linux-$LINUX_VERSION/arch/x86/kvm/Kconfig < KVM-PT/arch/x86/kvm/Kconfig.patch > /dev/null
-patch linux-$LINUX_VERSION/arch/x86/kvm/vmx.c < KVM-PT/arch/x86/kvm/vmx.c.patch > /dev/null
-patch linux-$LINUX_VERSION/arch/x86/kvm/svm.c < KVM-PT/arch/x86/kvm/svm.c.patch > /dev/null
-patch linux-$LINUX_VERSION/arch/x86/kvm/x86.c < KVM-PT/arch/x86/kvm/x86.c.patch > /dev/null
-patch linux-$LINUX_VERSION/arch/x86/include/asm/kvm_host.h < KVM-PT/arch/x86/include/asm/kvm_host.h.patch > /dev/null
-patch linux-$LINUX_VERSION/arch/x86/include/uapi/asm/kvm.h < KVM-PT/arch/x86/include/uapi/asm/kvm.h.patch > /dev/null
-patch linux-$LINUX_VERSION/include/uapi/linux/kvm.h <  KVM-PT/include/uapi/linux/kvm.h.patch > /dev/null
+patch linux-$LINUX_VERSION/arch/x86/kvm/Makefile < KVM-PT/arch/x86/kvm/Makefile.patch
+patch linux-$LINUX_VERSION/arch/x86/kvm/Kconfig < KVM-PT/arch/x86/kvm/Kconfig.patch
+patch linux-$LINUX_VERSION/arch/x86/kvm/vmx.c < KVM-PT/arch/x86/kvm/vmx.c.patch
+patch linux-$LINUX_VERSION/arch/x86/kvm/svm.c < KVM-PT/arch/x86/kvm/svm.c.patch
+patch linux-$LINUX_VERSION/arch/x86/kvm/x86.c < KVM-PT/arch/x86/kvm/x86.c.patch
+patch linux-$LINUX_VERSION/arch/x86/include/asm/kvm_host.h < KVM-PT/arch/x86/include/asm/kvm_host.h.patch
+patch linux-$LINUX_VERSION/arch/x86/include/uapi/asm/kvm.h < KVM-PT/arch/x86/include/uapi/asm/kvm.h.patch
+patch linux-$LINUX_VERSION/include/uapi/linux/kvm.h <  KVM-PT/include/uapi/linux/kvm.h.patch
 
 cp KVM-PT/arch/x86/kvm/vmx.h linux-$LINUX_VERSION/arch/x86/kvm/
 cp KVM-PT/arch/x86/kvm/vmx_pt.h linux-$LINUX_VERSION/arch/x86/kvm/

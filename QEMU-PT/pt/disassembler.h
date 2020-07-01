@@ -60,6 +60,7 @@ typedef struct {
 	uint64_t ins_addr;
 	uint64_t target_addr;
 	cofi_type type;
+	uint8_t ins_len;
 } cofi_header;
 
 typedef struct cofi_list {
@@ -69,7 +70,7 @@ typedef struct cofi_list {
 } cofi_list;
 
 typedef struct disassembler_s{
-	uint8_t* code;
+	CPUState *cpu;
 	uint64_t min_addr;
 	uint64_t max_addr;
 	void (*handler)(uint64_t);
@@ -79,7 +80,7 @@ typedef struct disassembler_s{
 	bool debug;
 } disassembler_t;
 
-disassembler_t* init_disassembler(uint8_t* code, uint64_t min_addr, uint64_t max_addr, void (*handler)(uint64_t));
+disassembler_t* init_disassembler(CPUState *cpu, uint64_t min_addr, uint64_t max_addr, void (*handler)(uint64_t));
 bool trace_disassembler(disassembler_t* self, uint64_t entry_point, bool isr, tnt_cache_t* tnt_cache_state);
 void destroy_disassembler(disassembler_t* self);
 

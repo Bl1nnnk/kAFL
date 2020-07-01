@@ -37,7 +37,11 @@ def atomic_write(filename, data):
     f.flush()
     os.fsync(f.fileno())
     f.close()
-    os.rename("/tmp/kafl.tmp", filename)
+    try:
+        os.rename("/tmp/kafl.tmp", filename)
+    except:
+        copyfile("/tmp/kafl.tmp", filename)
+	os.remove("/tmp/kafl.tmp")
 
 
 def read_binary_file(filename):
@@ -78,6 +82,7 @@ def prepare_working_dir(directory_path, purge=False):
             os.remove("/dev/shm/kafl_filter0")
         if os.path.exists("/dev/shm/kafl_tfilter"):
             os.remove("/dev/shm/kafl_tfilter")
+	os.system("rm -rf /dev/shm/kafl_*")
 
     if len(os.listdir(directory_path)) == 0:
         for folder in folders:

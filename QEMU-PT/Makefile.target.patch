@@ -19,7 +19,7 @@
 150c151
 < LIBS := $(libs_softmmu) $(LIBS)
 ---
-> LIBS := $(libs_softmmu) $(LIBS) -lcapstone
+> LIBS := $(libs_softmmu) $(LIBS) -lcapstone -lm
 165c166
 < GENERATED_FILES += hmp-commands.h hmp-commands-info.h
 ---

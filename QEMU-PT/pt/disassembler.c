@@ -20,6 +20,7 @@ along with QEMU-PT.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include "pt/disassembler.h"
+#include "pt/memory_access.h"
 
 #define LOOKUP_TABLES		5
 #define IGN_MOD_RM			0
@@ -38,17 +39,17 @@ cofi_ins cb_lookup[] = {
 	{X86_INS_JECXZ,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
 	{X86_INS_JE,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
 	{X86_INS_JGE,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
-    {X86_INS_JG,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
-    {X86_INS_JLE,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
-    {X86_INS_JL,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
-    {X86_INS_JNE,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
-    {X86_INS_JNO,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
-    {X86_INS_JNP,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
-    {X86_INS_JNS,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
-    {X86_INS_JO,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
-    {X86_INS_JP,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
-    {X86_INS_JRCXZ,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
-    {X86_INS_JS,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
+	{X86_INS_JG,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
+	{X86_INS_JLE,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
+	{X86_INS_JL,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
+	{X86_INS_JNE,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
+	{X86_INS_JNO,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
+	{X86_INS_JNP,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
+	{X86_INS_JNS,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
+	{X86_INS_JO,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
+	{X86_INS_JP,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
+	{X86_INS_JRCXZ,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
+	{X86_INS_JS,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
 	{X86_INS_LOOP,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
 	{X86_INS_LOOPE,		IGN_MOD_RM,	IGN_OPODE_PREFIX},
 	{X86_INS_LOOPNE,	IGN_MOD_RM,	IGN_OPODE_PREFIX},
@@ -178,20 +179,13 @@ static void edit_cofi_ptr(cofi_list* element, cofi_list* target){
 
 /* ===== kAFL disassembler hashmap ===== */
 
+cofi_list *tmp_cofi;
 static void map_put(disassembler_t* self, uint64_t addr, uint64_t ref){
 	int ret;
 	khiter_t k;
 	k = kh_put(ADDR0, self->map, addr, &ret); 
 	kh_value(self->map, k) = ref;
-}
 
-static int map_exist(disassembler_t* self, uint64_t addr){
-	khiter_t k;
-	k = kh_get(ADDR0, self->map, addr); 
-	if(k != kh_end(self->map)){
-		return 1;
-	}
-	return 0;
 }
 
 static int map_get(disassembler_t* self, uint64_t addr, uint64_t* ref){
@@ -249,32 +243,55 @@ static cofi_type opcode_analyzer(disassembler_t* self, cs_insn *ins){
 	return NO_COFI_TYPE;
 }
 
-static cofi_list* analyse_assembly(disassembler_t* self, uint64_t base_address){
+static cofi_list* analyse_assembly(disassembler_t* self, uint64_t base_address, bool across_page)
+{
 	csh handle;
 	cs_insn *insn;
 	cofi_type type;
 	cofi_header* tmp = NULL;
 	uint64_t tmp_list_element = 0;
-	bool last_nop = false;
+	bool last_nop = false, no_munmap = true;
 	uint64_t total = 0;
 	uint64_t cofi = 0;
-	const uint8_t* code = self->code + (base_address-self->min_addr);
-	size_t code_size = (self->max_addr-base_address);
+	const uint8_t* code = mmap_virtual_memory(base_address, self->cpu);
+	uint8_t tmp_code[x86_64_PAGE_SIZE*2];
+	size_t code_size = x86_64_PAGE_SIZE - (base_address & x86_64_PAGE_OFF_MASK);
 	uint64_t address = base_address;
 	cofi_list* predecessor = NULL;
 	cofi_list* first = NULL;
 				
 	if (cs_open(CS_ARCH_X86, CS_MODE_64, &handle) != CS_ERR_OK)
-		return false;
+		return NULL;
 	
 	cs_option(handle, CS_OPT_DETAIL, CS_OPT_ON);
 	insn = cs_malloc(handle);
 	
-	while(cs_disasm_iter(handle, &code, &code_size, &address, insn)) {	
+	if (!code) {
+		printf("Fatal error 1 in analyse_assembly.\n");
+		asm("int $3\r\n");
+	}
+
+	if (across_page) {
+		/*
+		 * We must parse instructions in two consecutive pages.
+		 * */
+		code_size = x86_64_PAGE_SIZE*2 - (address & x86_64_PAGE_OFF_MASK);
+		if (!read_virtual_memory(address, tmp_code, code_size, self->cpu)) {
+			printf("Fatal error 2 in analyse_assembly.\n");
+			asm("int $3\r\n");
+		}
+		if (no_munmap) {
+			munmap_virtual_memory((void *)code, self->cpu);
+			no_munmap = false;
+		}
+		code = tmp_code;
+	}
+
+	while (cs_disasm_iter(handle, &code, &code_size, &address, insn)) {
 		if (insn->address > self->max_addr){
 			break;
 		}
-			
+
 		type = opcode_analyzer(self, insn);
 		total++;
 		
@@ -288,18 +305,20 @@ static cofi_list* analyse_assembly(disassembler_t* self, uint64_t base_address){
 			tmp->ins_addr = 0;
 			tmp->target_addr = 0;
 	
-			edit_cofi_ptr(predecessor, self->list_element);
-			predecessor = self->list_element;
+			if (cofi)
+				predecessor = self->list_element;
 			self->list_element = new_list_element(self->list_element, tmp);
+			edit_cofi_ptr(predecessor, self->list_element);
 		}
 		
-		if (map_exist(self, insn->address)){
-			if(tmp){
-				map_get(self, insn->address, &tmp_list_element);
-				edit_cofi_ptr(self->list_element, (cofi_list*)tmp_list_element);
+		if (!map_get(self, insn->address, &tmp_list_element)){
+			if(((cofi_list *)tmp_list_element)->cofi_ptr){
+				edit_cofi_ptr(self->list_element, (cofi_list *)tmp_list_element);
 				//printf("EDIT COFI PTR (%p %p %p %d)\n", list_element, (cofi_list*)tmp_list_element, list_element->cofi, list_element->cofi->type);
+				break;
+			} else {
+				self->list_element = (cofi_list *)tmp_list_element;
 			}
-			break;
 		}
 		
 		if (type != NO_COFI_TYPE){
@@ -307,6 +326,7 @@ static cofi_list* analyse_assembly(disassembler_t* self, uint64_t base_address){
 			last_nop = false;
 			tmp->type = type;
 			tmp->ins_addr = insn->address;
+			tmp->ins_len = (uint64_t)code - (uint64_t)insn->address;
 			if (type == COFI_TYPE_CONDITIONAL_BRANCH || type == COFI_TYPE_UNCONDITIONAL_DIRECT_BRANCH){
 				tmp->target_addr = hex_to_bin(insn->op_str);	
 			} else {
@@ -316,6 +336,7 @@ static cofi_list* analyse_assembly(disassembler_t* self, uint64_t base_address){
 			map_put(self, tmp->ins_addr, (uint64_t)(self->list_element));
 		} else {
 			last_nop = true;
+			self->list_element->cofi->ins_addr = insn->address;
 			map_put(self, insn->address, (uint64_t)(self->list_element));
 		}
 		
@@ -323,15 +344,18 @@ static cofi_list* analyse_assembly(disassembler_t* self, uint64_t base_address){
 			first = self->list_element;
 		}
 	}
-	
+
 	cs_free(insn, 1);
 	cs_close(&handle);
+	if (no_munmap) {
+		munmap_virtual_memory((void *)code, self->cpu);
+	}
 	return first;
 }
 
-disassembler_t* init_disassembler(uint8_t* code, uint64_t min_addr, uint64_t max_addr, void (*handler)(uint64_t)){
+disassembler_t* init_disassembler(CPUState *cpu, uint64_t min_addr, uint64_t max_addr, void (*handler)(uint64_t)){
 	disassembler_t* res = malloc(sizeof(disassembler_t));
-	res->code = code;
+	res->cpu = cpu;
 	res->min_addr = min_addr;
 	res->max_addr = max_addr;
 	res->handler = handler;
@@ -353,109 +377,149 @@ static inline bool out_of_bounds(disassembler_t* self, uint64_t addr){
 }
 
 static inline cofi_list* get_obj(disassembler_t* self, uint64_t entry_point, tnt_cache_t* tnt_cache_state){
-	uint64_t tmp_list_element;
+	cofi_list *tmp_obj;
+
 	if (!count_tnt(tnt_cache_state))
 		return NULL;
 	if (out_of_bounds(self, entry_point)){
 		return NULL;
 	}
 	
-	if(map_get(self, entry_point, &tmp_list_element)){
-		return analyse_assembly(self, entry_point);
+	if(map_get(self, entry_point, (uint64_t *)&tmp_obj)){
+		tmp_obj = analyse_assembly(self, entry_point, false);
 	}
-	return (cofi_list*)tmp_list_element;
+
+	if (!tmp_obj || !tmp_obj->cofi_ptr) {
+		tmp_obj = analyse_assembly(self, entry_point, true);
+	}
+
+	if (!tmp_obj->cofi_ptr) {
+		printf("Fatal error 1 in get_obj.\n");
+		asm("int $3\r\n");
+	}
+	return tmp_obj;
 }
 
+static inline cofi_list* get_cofi_ptr(disassembler_t* self, cofi_list *obj)
+{
+	cofi_list *tmp_obj;
+
+	if (!obj->cofi_ptr) {
+		tmp_obj = analyse_assembly(self, obj->cofi->ins_addr, true);
+		if (!tmp_obj->cofi_ptr) {
+			printf("Fatal error 1 in get_cofi_ptr.\n");
+			asm("int $3\r\n");
+		}
+	} else {
+		tmp_obj = obj->cofi_ptr;
+	}
+
+	return tmp_obj;
+}
 
 bool trace_disassembler(disassembler_t* self, uint64_t entry_point, bool isr, tnt_cache_t* tnt_cache_state){
 	cofi_list *obj, *last_obj;
 	uint8_t tnt;
-	int fd = 0; 
-	int last_type = -1;
 		
 	obj = get_obj(self, entry_point, tnt_cache_state);
+	self->handler(entry_point);
 	while(true){		
 		
 		if(!obj){
-			if (last_type == COFI_TYPE_FAR_TRANSFERS)
+			if (!count_tnt(tnt_cache_state))
 				return true;
-			return false;
+			goto __ret_false;
 		}
 		
 		switch(obj->cofi->type){
 
 			case COFI_TYPE_CONDITIONAL_BRANCH:
-				last_type = COFI_TYPE_CONDITIONAL_BRANCH;
 				tnt = process_tnt_cache(tnt_cache_state);
 				switch(tnt){
 					case TNT_EMPTY:
-						return false;
+						return true;
 					case TAKEN:
 						sample_decoded_detailed("(%d)\t%lx\t(Taken)\n", COFI_TYPE_CONDITIONAL_BRANCH, obj->cofi->ins_addr);
-						self->handler(obj->cofi->ins_addr);
-						if (out_of_bounds(self, obj->cofi->ins_addr))
-							return true;
+						self->handler(obj->cofi->target_addr);
+						if (out_of_bounds(self, obj->cofi->ins_addr)) {
+							if (!count_tnt(tnt_cache_state))
+								return true;
+							else
+								goto __ret_false;
+						}
+
 						obj = get_obj(self, obj->cofi->target_addr, tnt_cache_state);
 						break;
 					case NOT_TAKEN:
 						sample_decoded_detailed("(%d)\t%lx\t(Not Taken)\n", COFI_TYPE_CONDITIONAL_BRANCH ,obj->cofi->ins_addr);
-						self->handler(obj->cofi->ins_addr);
 						//if(!count_tnt())
 						//	return true;
-						obj = obj->cofi_ptr;
+						self->handler(obj->cofi->ins_addr + obj->cofi->ins_len);
+						obj = get_cofi_ptr(self, obj);
 						break;
 				}
 				break;
 
 			case COFI_TYPE_UNCONDITIONAL_DIRECT_BRANCH:
-				last_type = COFI_TYPE_UNCONDITIONAL_DIRECT_BRANCH;
 				sample_decoded_detailed("(%d)\t%lx\n", COFI_TYPE_UNCONDITIONAL_DIRECT_BRANCH ,obj->cofi->ins_addr);
 				last_obj = obj;
 				if (out_of_bounds(self, obj->cofi->target_addr)){
 					if (!count_tnt(tnt_cache_state)){
-						return false;
+						return true;
+					} else {
+						goto __ret_false;
 					}
-					obj = obj->cofi_ptr;
-				}
-				else {
+					//obj = get_cofi_ptr(self, obj);
+				} else {
 					obj = get_obj(self, obj->cofi->target_addr, tnt_cache_state);
 				}
 				/* loop */
 				if(obj && (last_obj->cofi->ins_addr == obj->cofi->ins_addr)){
-					return false;
+					goto __ret_false;
 				}
 				break;
 
 			case COFI_TYPE_INDIRECT_BRANCH:
-				last_type = COFI_TYPE_INDIRECT_BRANCH;
 				self->handler(obj->cofi->target_addr);
 				sample_decoded_detailed("(2)\t%lx\n",obj->cofi->ins_addr);
-				return false;
-				obj = obj->cofi_ptr;
+				if (!count_tnt(tnt_cache_state)){
+					return true;
+				} else {
+					goto __ret_false;
+				}
+				obj = get_cofi_ptr(self, obj);
 				break;
 
 			case COFI_TYPE_NEAR_RET:
-				last_type = COFI_TYPE_NEAR_RET;
 				sample_decoded_detailed("(3)\t%lx\n",obj->cofi->ins_addr);
-				return false;
-				obj = obj->cofi_ptr;
+				if (!count_tnt(tnt_cache_state))
+					return true;
+				else
+					goto __ret_false;
+				obj = get_cofi_ptr(self, obj);
 				break;
 
 			case COFI_TYPE_FAR_TRANSFERS:
-				last_type = COFI_TYPE_FAR_TRANSFERS;
 				sample_decoded_detailed("(4)\t%lx\n",obj->cofi->ins_addr);
-				return true;
-				obj = obj->cofi_ptr;
+				if (!count_tnt(tnt_cache_state))
+					return true;
+				else
+					goto __ret_false;
+				obj = get_cofi_ptr(self, obj);
 				break;
 
 			case NO_COFI_TYPE:
-				last_type = NO_COFI_TYPE;
 				sample_decoded_detailed("(5)\t%lx\n",obj->cofi->ins_addr);
 				#ifdef DEBUG 
 				#endif
-				obj = obj->cofi_ptr;
+				obj = get_cofi_ptr(self, obj);
 				break;
 		}
 	}
+
+__ret_false:
+	printf("Fatal error 1 in trace_disassembler.\n");
+	asm("int $3\r\n");
+	return false;
 }
 

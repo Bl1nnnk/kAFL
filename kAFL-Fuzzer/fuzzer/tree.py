@@ -316,14 +316,14 @@ class KaflTree:
         self.timeout_bitmap = mmap.mmap(self.timeout_bitmap_fd, self.bitmap_size, mmap.MAP_SHARED, mmap.PROT_WRITE | mmap.PROT_READ)
 
         if flush:
-            for i in range(self.bitmap_size):
+            for i in xrange(self.bitmap_size):
                 self.bitmap[i] = '\x00'
                 self.crash_bitmap[i] = '\x00'
                 self.kasan_bitmap[i] = '\x00'
                 self.timeout_bitmap[i] = '\x00'
-        for i in range(self.bitmap_size):
+        for i in xrange(self.bitmap_size):
             self.fav_bitmap.append(None)
-       
+
         self.graph = KaflGraph([], enabled=enable_graphviz)
         self.favorites = 0
         self.favorites_in_progress = 0
@@ -407,7 +407,7 @@ class KaflTree:
                     self.favorites_finished += 1
 
             if node.node_state == KaflNodeState.in_progress:
-                self.paths_in_progress -= 1 
+                self.paths_in_progress -= 1
                 if node.node_type == KaflNodeType.favorite:
                     self.favorites_in_progress -= 1
 
@@ -421,7 +421,7 @@ class KaflTree:
             self.paths_in_progress += 1
             if node.node_type == KaflNodeType.favorite:
                 self.favorites_in_progress += 1
-            
+
             if node.node_type == KaflNodeType.favorite:
                 self.favorite_unfinished_buf.append(self.__get_ref(node))
             else:
@@ -512,7 +512,7 @@ class KaflTree:
                     self.__set_finished(self.__get_from_ref(self.current))
                 else:
                     self.__set_unfinished(self.__get_from_ref(self.current))
-        
+
         if tmp.performance != 0:
             tmp.performance = int((tmp.performance + performance)/2.0)
         else:
@@ -540,7 +540,7 @@ class KaflTree:
     def __are_new_bits_present(self, new_bitmap):
         found = False
         counter = 0
-        for i in range(len(new_bitmap)):
+        for i in xrange(len(new_bitmap)):
             # Check if bit within the shm bitmap is set and the bucketing bitmap field is not already fully populated...
             if new_bitmap[i] != '\xff' and self.bitmap[i] != '\xff':
                     for j in reversed(range(len(self.buckets))):
@@ -560,7 +560,7 @@ class KaflTree:
     def __is_finding_unique(self, bitmap, finding_bitmap, timeout=False):
         found = False
         counter = 0
-        for i in range(len(bitmap)):
+        for i in xrange(len(bitmap)):
             # Check if bit within the shm bitmap is set and the bucketing bitmap field is not already fully populated...
             if bitmap[i] != '\xff' and finding_bitmap[i] != '\xff':
                     for j in reversed(range(len(self.buckets))):
@@ -592,18 +592,18 @@ class KaflTree:
 
             self.fav_bitmap[i] = self.__get_ref(node)
             self.score_changed = True
-            
+
         if self.score_changed:
             self.score_changed = False
             self.reevalute_favorite(prevs)
-                
+
             self.favorites += 1
 
             self.regular_buf.remove(self.__get_ref(node))
             self.favorite_buf.append(self.__get_ref(node))
 
             node.node_type = KaflNodeType.favorite
-            self.graph.update(node)  
+            self.graph.update(node)
 
     def reevalute_favorite(self, prevs):
         for prev in list(set(prevs)):
@@ -625,7 +625,7 @@ class KaflTree:
                     self.regular_unfinished_buf.append(reference)
 
                 prev.node_type = KaflNodeType.regular
-                self.graph.update(prev)  
+                self.graph.update(prev)
 
 
     def is_unique_crash(self, bitmap):
@@ -636,9 +636,9 @@ class KaflTree:
 
     def is_unique_timeout(self, bitmap):
         empty_bitmap = True
-        for i in range(len(bitmap)):
+        for i in xrange(len(bitmap)):
             if bitmap[i] != '\xff':
-                empty_bitmap = False 
+                empty_bitmap = False
                 break
         if empty_bitmap:
             log_tree("Very suspicious...kAFL bitmap is empty.\n\t\tWrong address range configured or buggy userspace agent in use?\n\n")

@@ -114,7 +114,7 @@ class MapserverProcess:
             else:
                 time.sleep(0.5)
                 self.__log("Fail Reload")
-        
+
 
     def __add_new_hash(self, new_hash, bitmap, payload, performance):
         """
@@ -229,7 +229,7 @@ class MapserverProcess:
         self.mapserver_state_obj.hashes = self.treemap.paths
         self.mapserver_state_obj.path_pending = self.treemap.paths - self.treemap.paths_finished - self.treemap.paths_in_progress
         self.mapserver_state_obj.path_unfinished = self.treemap.paths_in_progress
-        
+
         self.mapserver_state_obj.favorites = self.treemap.favorites
         self.mapserver_state_obj.fav_pending = self.treemap.favorites-self.treemap.favorites_finished - self.treemap.favorites_in_progress
         self.mapserver_state_obj.fav_unfinished = self.treemap.favorites_in_progress

@@ -62,10 +62,12 @@ class SlaveProcess:
             # QEMU is full of memory leaks...fixing it that way...
             if self.soft_reload_counter >= 32:
                 self.soft_reload_counter = 0
-                raise Exception("...")
+                raise Exception("Overstrop soft reload counter")
             self.q.soft_reload()
             self.soft_reload_counter += 1
-        except:
+        except Exception as e:
+            log_slave("Fail soft reload", self.slave_id)
+            log_slave(str(e), self.slave_id)
             while True:
                 self.q.__del__()
                 self.q = qemu(self.slave_id, self.config)
@@ -96,7 +98,7 @@ class SlaveProcess:
                 if self.comm.slave_termination.value:
                     self.comm.slave_locks_B[self.slave_id].release()
                     send_msg(KAFL_TAG_RESULT, results, self.comm.to_mapserver_queue, source=self.slave_id)
-                    return 
+                    return
                 while True:
                     while True:
                         try:
@@ -126,7 +128,7 @@ class SlaveProcess:
                 if self.comm.slave_termination.value:
                     self.comm.slave_locks_B[self.slave_id].release()
                     send_msg(KAFL_TAG_RESULT, results, self.comm.to_mapserver_queue, source=self.slave_id)
-                    return 
+                    return
 
                 if self.q.timeout and not (self.q.crashed or self.q.kasan):
                     vm_reloaded = True
@@ -149,7 +151,7 @@ class SlaveProcess:
                         #false positiv timeout (already seen)
                         self.reloaded = False
                         counter += 1
-                
+
                 if self.q.crashed or self.q.timeout or self.q.kasan or self.reloaded:
                     vm_reloaded = True
                     results.append(FuzzingResult(i, self.q.crashed, (self.q.timeout or self.reloaded), self.q.kasan, response.data[i],
@@ -172,7 +174,7 @@ class SlaveProcess:
         if self.comm.slave_termination.value:
             self.comm.slave_locks_B[self.slave_id].release()
             send_msg(KAFL_TAG_RESULT, results, self.comm.to_mapserver_queue, source=self.slave_id)
-            return 
+            return
 
         self.comm.slave_locks_B[self.slave_id].release()
         send_msg(KAFL_TAG_RESULT, results, self.comm.to_mapserver_queue, source=self.slave_id)
@@ -253,7 +255,7 @@ class SlaveProcess:
                 break
 
         log_slave("Sampling findished!", self.slave_id)
-        
+
         if sampling_counter == 0:
             sampling_counter = 1
         self.stage_tick_treshold = sampling_ticks / sampling_counter
@@ -303,7 +305,7 @@ class SlaveProcess:
             self.__respond_sampling_req(response)
 
         elif response.tag == KAFL_TAG_REQ_BENCHMARK:
-            self.__respond_benchmark_req(response)  
+            self.__respond_benchmark_req(response)
 
         else:
             log_slave("Received TAG: " + str(response.tag), self.slave_id)
@@ -312,7 +314,7 @@ class SlaveProcess:
         self.comm.reload_semaphore.acquire()
         self.q.start()
         self.comm.reload_semaphore.release()
-            
+
         send_msg(KAFL_TAG_START, self.q.qemu_id, self.comm.to_master_queue, source=self.slave_id)
         send_msg(KAFL_TAG_REQ, self.q.qemu_id, self.comm.to_master_queue, source=self.slave_id)
         while True:

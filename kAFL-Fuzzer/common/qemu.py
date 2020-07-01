@@ -31,11 +31,32 @@ import psutil
 import mmh3
 
 from common.debug import log_qemu
+from common.debug import get_log_file
 from common.util import atomic_write
 
 from common.util import Singleton
 from multiprocessing import Process, Manager
 
+
+def get_valid_tap(tbase, nbase=0):
+    cmd = """
+    for((i=2;i<50;i++))
+    do
+        ip link list tap-$i | grep 'state DOWN' >/dev/null 2>&1  &&  x=$i && break
+    done
+
+    if [ $i -eq 50 ]
+    then
+        echo -1
+    else
+        echo $i
+    fi
+    """
+    tap_dev = int(subprocess.check_output(cmd, shell=True, executable='/bin/bash').strip()) + nbase
+    if tap_dev > 0:
+        return tbase + str(tap_dev)
+    else:
+        return None
 
 def to_string_32(value):
     return chr((value >> 24) & 0xff) + \
@@ -70,6 +91,7 @@ class qemu:
         self.intervm_tty_write = None
         self.control = None
         self.control_fileno = None
+        self.verbose = config.argument_values['v']
 
         self.payload_filename   = "/dev/shm/kafl_qemu_payload_" + self.qemu_id
         self.binary_filename    = "/dev/shm/kafl_qemu_binary_"  + self.qemu_id
@@ -83,30 +105,51 @@ class qemu:
         self.end_ticks = 0
         self.tick_timeout_treshold = self.config.config_values["TIMEOUT_TICK_FACTOR"]
 
-        self.cmd =  self.config.config_values['QEMU_KAFL_LOCATION'] + " " \
-                    "-hdb " + self.config.argument_values['ram_file'] + " " \
-                    "-hda " + self.config.argument_values['overlay_dir'] +  "/overlay_" + self.qemu_id + ".qcow2 " \
-                    "-serial mon:stdio " \
-                    "-enable-kvm " \
-                    "-k de " \
-                    "-m " + str(config.argument_values['mem']) + " " \
-                    "-nographic " \
-                    "-net user " \
-                    "-net nic " \
-                    "-chardev socket,server,nowait,path=" + self.control_filename + \
-                    ",id=kafl_interface " \
-                    "-device kafl,chardev=kafl_interface,bitmap_size=" + str(self.bitmap_size) + ",shm0=" + self.binary_filename + \
-                    ",shm1=" + self.payload_filename + \
-                    ",bitmap=" + self.bitmap_filename
+        if self.config.argument_values['graphic']:
+            ng = ""
+        else:
+            ng = "-nographic "
+        if self.config.argument_values['tp']:
+            self.cmd =  self.config.config_values['QEMU_KAFL_LOCATION'] + " " \
+                "-hda " + self.config.argument_values['overlay_dir'] +  "/overlay_" + self.qemu_id + ".qcow2 " \
+                "-hdb " + self.config.argument_values['ram_file'] + " " \
+                "-serial mon:stdio " \
+                "-enable-kvm " \
+                "-k de " \
+                "-m " + str(config.argument_values['mem']) + " " \
+                + ng + \
+                "-usbdevice tablet " \
+                "-netdev tap,ifname=" + get_valid_tap("tap-", int(self.qemu_id)) + ",id=net0,script=no,downscript=no -device rtl8139,netdev=net0 " \
+                "-chardev socket,server,nowait,path=" + self.control_filename + \
+                ",id=kafl_interface " \
+                "-device kafl,chardev=kafl_interface,bitmap_size=" + str(self.bitmap_size) + ",shm0=" + self.binary_filename + \
+                ",shm1=" + self.payload_filename + \
+                ",bitmap=" + self.bitmap_filename
+        else:
+            self.cmd =  self.config.config_values['QEMU_KAFL_LOCATION'] + " " \
+                "-hdb " + self.config.argument_values['ram_file'] + " " \
+                "-hda " + self.config.argument_values['overlay_dir'] +  "/overlay_" + self.qemu_id + ".qcow2 " \
+                "-serial mon:stdio " \
+                "-enable-kvm " \
+                "-k de " \
+                "-m " + str(config.argument_values['mem']) + " " \
+                 + ng + \
+                "-net user " \
+                "-net nic " \
+                "-chardev socket,server,nowait,path=" + self.control_filename + \
+                ",id=kafl_interface " \
+                "-device kafl,chardev=kafl_interface,bitmap_size=" + str(self.bitmap_size) + ",shm0=" + self.binary_filename + \
+                ",shm1=" + self.payload_filename + \
+                ",bitmap=" + self.bitmap_filename
 
-        for i in range(1):
+        for i in range(4):
             key = "ip" + str(i)
             if self.config.argument_values.has_key(key) and self.config.argument_values[key]:
                 range_a = hex(self.config.argument_values[key][0]).replace("L", "")
-                range_b = hex(self.config.argument_values[key][1]).replace("L", "") 
+                range_b = hex(self.config.argument_values[key][1]).replace("L", "")
                 self.cmd += ",ip" + str(i) + "_a=" + range_a + ",ip" + str(i) + "_b=" + range_b
                 self.cmd += ",filter" + str(i) + "=/dev/shm/kafl_filter" + str(i)
-                    
+
         self.cmd += " -loadvm " + self.config.argument_values["S"] + " "
 
         if self.config.argument_values["macOS"]:
@@ -139,8 +182,8 @@ class qemu:
         if qid == 0:
             log_qemu("Launching Virtual Maschine...CMD:\n" + self.cmd, self.qemu_id)
         else:
-            log_qemu("Launching Virtual Maschine...", self.qemu_id)
-        self.virgin_bitmap = ''.join(chr(0xff) for x in range(self.bitmap_size))
+            log_qemu("Launching Virtual Maschine...CMD:\n" + self.cmd, self.qemu_id)
+        self.virgin_bitmap = ''.join(chr(0xff) for x in xrange(self.bitmap_size))
 
         self.__set_binary(self.binary_filename, self.config.argument_values['executable'], (16 << 20))
 
@@ -173,7 +216,7 @@ class qemu:
             pass
 
         try:
-            self.fs_shm.close() 
+            self.fs_shm.close()
         except:
             pass
 
@@ -234,12 +277,12 @@ class qemu:
     def set_tick_timeout_treshold(self, treshold):
         self.tick_timeout_treshold = treshold
 
-    def start(self, verbose=False):
-        if verbose:
+    def start(self):
+        if self.verbose:
             self.process = subprocess.Popen(filter(None, self.cmd.split(" ")),
                                             stdin=None,
-                                            stdout=None,
-                                            stderr=None)
+                                            stdout=get_log_file(),
+                                            stderr=get_log_file())
         else:
             self.process = subprocess.Popen(filter(None, self.cmd.split(" ")),
                                             stdin=subprocess.PIPE,
@@ -332,6 +375,7 @@ class qemu:
     def check_recv(self, timeout_detection=True):
         if timeout_detection:
             self.control.settimeout(1.25)
+            #self.control.settimeout(125000)
         try:
             result = self.control.recv(1)
         except socket_error, e:
@@ -343,7 +387,7 @@ class qemu:
             return 3
         elif result == 'R':
             return 0
-            log_qemu("Finding...Type is ["+ result + "]", self.qemu_id)
+        log_qemu("Finding...Type is ["+ result + "]", self.qemu_id)
         return 2
 
     def send_payload(self, timeout_detection=True):
@@ -367,7 +411,7 @@ class qemu:
                     if (self.end_ticks-self.start_ticks) >= self.tick_timeout_treshold:
                         break
                     if counter >= 10:
-                    	break
+                        break
                     counter += 1
                 else:
                     break
@@ -414,9 +458,9 @@ class qemu:
         self.global_bitmap = mmap.mmap(self.global_bitmap_fd, self.bitmap_size, mmap.MAP_SHARED, mmap.PROT_WRITE | mmap.PROT_READ)
 
     def verifiy_input(self, payload, bitmap, payload_size, runs=3):
-    	crashed = self.crashed
-    	timeout = self.timeout
-    	kasan = self.kasan
+        crashed = self.crashed
+        timeout = self.timeout
+        kasan = self.kasan
         failed = False
         try:
             self.enable_sampling_mode()
@@ -444,7 +488,7 @@ class qemu:
                 if tmp_bitmap1 == tmp_bitmap2:
                     break
                 init = False
-                
+
         except:
             failed = True
 
@@ -459,7 +503,7 @@ class qemu:
             if not failed:
                 return tmp_bitmap2
             else:
-                return bitmap            
+                return bitmap
         except:
             self.timeout = True
             return bitmap
@@ -468,7 +512,7 @@ class qemu:
         if not self.global_bitmap:
             self.open_global_bitmap()
 
-        for i in range(self.bitmap_size):
+        for i in xrange(self.bitmap_size):
             if bitmap[i] != '\xff':
                 if self.global_bitmap[i] == '\x00':
                     return True
@@ -476,7 +520,7 @@ class qemu:
                     return True
         return False
 
-    
+
     def copy_bitmap(self, shm, num, size, bitmap, payload, payload_size, effector_mode=False):
         new_hash = mmh3.hash64(bitmap)
         if not (self.crashed or self.kasan or self.timeout):

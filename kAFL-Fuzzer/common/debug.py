@@ -48,6 +48,7 @@ def __init_logger():
     global output_file, init_time
     init_time = time.time()
     output_file = open("debug.log", 'w')
+    sys.stderr = output_file
 
 def logger(msg):
     global logging_is_enabled, output_file, init_time, shared_list
@@ -61,7 +62,8 @@ def logger(msg):
     if logging_is_enabled:
         if not output_file:
             __init_logger()
-        output_file.write("[" + str(timedelta(seconds=time.time()-init_time)) + "] " + msg + "\n")
+        #output_file.write("[" + str(timedelta(seconds=time.time()-init_time)) + "] " + msg + "\n")
+        output_file.write("[" + str(timedelta(seconds=time.time())) + "] " + msg + "\n")
         output_file.flush()
 
 def get_rbuf_content():
@@ -74,7 +76,7 @@ def get_rbuf_content():
 def enable_logging():
     global logging_is_enabled
     logging_is_enabled = True
-    
+
 def log_master(msg):
     logger("[MASTER]        " + msg)
 
@@ -112,5 +114,6 @@ def log_core(msg):
 def log_info(msg):
     logger("[INFO]          " + msg)
 
-
+def get_log_file():
+    return output_file
 

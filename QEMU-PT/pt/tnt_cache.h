@@ -47,7 +47,7 @@ typedef struct tnt_cache_obj{
 typedef struct tnt_cache_s{
 	tnt_cache_obj* head;
 	tnt_cache_obj* next_node;
-	uint8_t counter;
+	uint32_t counter;
 } tnt_cache_t;
 
 tnt_cache_t* tnt_cache_init(void);

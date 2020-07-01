@@ -145,9 +145,8 @@ static void flush_log(decoder_t* self){
 }
 #endif
 
-decoder_t* pt_decoder_init(uint8_t* code, uint64_t min_addr, uint64_t max_addr, void (*handler)(uint64_t)){
+decoder_t* pt_decoder_init(CPUState *cpu, uint64_t min_addr, uint64_t max_addr, void (*handler)(uint64_t)){
 	decoder_t* res = malloc(sizeof(decoder_t));
-	res->code = code;
 	res->min_addr = min_addr;
 	res->max_addr = max_addr;
 	res->handler = handler;
@@ -160,7 +159,7 @@ decoder_t* pt_decoder_init(uint8_t* code, uint64_t min_addr, uint64_t max_addr, 
 #ifdef DECODER_LOG
 	flush_log(res);
 #endif
-	res->disassembler_state = init_disassembler(code, min_addr, max_addr, handler);
+	res->disassembler_state = init_disassembler(cpu, min_addr, max_addr, handler);
 	res->tnt_cache_state = tnt_cache_init();
 	return res;
 }
@@ -445,7 +444,7 @@ void decode_buffer(decoder_t* self, uint8_t* map, size_t len){
 			break;
 		}
 		
-		while (p < end) {			
+		while (p < end) {
 			byte0 = *p;
 				
 			/* pad */

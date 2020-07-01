@@ -40,7 +40,6 @@ along with QEMU-PT.  If not, see <http://www.gnu.org/licenses/>.
 //#define DECODER_LOG
 
 typedef struct decoder_s{
-	uint8_t* code;
 	uint64_t min_addr;
 	uint64_t max_addr;
 	void (*handler)(uint64_t);
@@ -75,7 +74,7 @@ typedef struct decoder_s{
 #endif
 } decoder_t;
 
-decoder_t* pt_decoder_init(uint8_t* code, uint64_t min_addr, uint64_t max_addr, void (*handler)(uint64_t));
+decoder_t* pt_decoder_init(CPUState *cpu, uint64_t min_addr, uint64_t max_addr, void (*handler)(uint64_t));
 void decode_buffer(decoder_t* self, uint8_t* map, size_t len);
 void pt_decoder_destroy(decoder_t* self);
 void pt_decoder_flush(decoder_t* self);
